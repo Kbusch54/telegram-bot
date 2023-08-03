@@ -1,29 +1,61 @@
 from typing import Final
-from telegram import Bot, Update
+from telegram import Bot, KeyboardButton, Update,InlineKeyboardButton,InlineKeyboardMarkup
 import requests
 import threading
+from web3 import Web3
 import time
 from supabase import create_client, Client
 import os 
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes,Updater, CallbackContext,ConversationHandler
+import json
+import sys
 from dotenv import load_dotenv
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes,Updater,CallbackQueryHandler, CallbackContext,ConversationHandler
 import asyncio
 
-# [{"id":"0x17FC002b466eEc40DaE837Fc4bE5c67993ddBd6F","data":{"symbol":"FRAX","reservedAmount":"378077560981592079166440","liqMinPrice":"999000020000000000000000000000","address":"0x17FC002b466eEc40DaE837Fc4bE5c67993ddBd6F","poolAmount":"10999999987248385879937667","globalShortSize":"0","weight":"2000","redemptionAmount":"1000000000000000000000000000000","liqMaxPrice":"999000020000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"1000000000000000000000000","availableAmount":"10621922426266793800771227","decimals":18,"minPrice":"1000000000000000000000000000000","guaranteedUsd":"0","name":"Frax","maxUsdgAmount":"11000000000000000000000000","cumulativeFundingRate":"60584","maxPrice":"1000000000000000000000000000000","usdgAmount":"10999999987248385879937667","maxGlobalShortSize":"0","fundingRate":"3","updatedAt":1690584633}},
-#  {"id":"0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f","data":{"symbol":"WBTC","reservedAmount":"84576267163","liqMinPrice":"29297736000000000000000000000000000","address":"0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f","poolAmount":"408894400784","globalShortSize":"8476638729118489157912229081278068465","weight":"25000","redemptionAmount":"3413084605930371","liqMaxPrice":"29297736000000000000000000000000000","maxGlobalLongSize":"35773295412798245898515614858911619627","bufferAmount":"250000000000","availableAmount":"324318133621","decimals":8,"minPrice":"29299010000000000000000000000000000","guaranteedUsd":"22254099312660715822578720908483251010","name":"Wrapped Bitcoin","maxUsdgAmount":"140000000000000000000000000","cumulativeFundingRate":"481959","maxPrice":" ","usdgAmount":"116543544374870520546113471","maxGlobalShortSize":"19526072096941042536124121532909733205","fundingRate":"20","updatedAt":1690584633}},
-#  {"id":"0x82aF49447D8a07e3bd95BD0d56f35241523fBab1","data":{"symbol":"ETH","reservedAmount":"20019220331180981054064","liqMinPrice":"1876445600000000000000000000000000","address":"0x82aF49447D8a07e3bd95BD0d56f35241523fBab1","poolAmount":"68471525662776002434589","globalShortSize":"20542683327230213053665740135592917078","weight":"30000","redemptionAmount":"533000740871029810731436916","liqMaxPrice":"1876445600000000000000000000000000","maxGlobalLongSize":"45285580330546351132904934067280286335","bufferAmount":"60000000000000000000000","availableAmount":"48452305331595021380525","decimals":18,"minPrice":"1876170000000000000000000000000000","guaranteedUsd":"33389068193085704813739782344043159440","name":"Ethereum","maxUsdgAmount":"155000000000000000000000000","cumulativeFundingRate":"626149","maxPrice":"1876170000000000000000000000000000","usdgAmount":"123035580193208588411105983","maxGlobalShortSize":"25793460367058138613345722013892012527","fundingRate":"29","updatedAt":1690584633}},
-#  {"id":"0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1","data":{"symbol":"DAI","reservedAmount":"1949994062450423207576965","liqMinPrice":"1000000000000000000000000000000","address":"0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1","poolAmount":"33551424591082137011386458","globalShortSize":"0","weight":"5000","redemptionAmount":"1000000000000000000000000000000","liqMaxPrice":"1000000000000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"7000000000000000000000000","availableAmount":"31601430528631713803809493","decimals":18,"minPrice":"1000000000000000000000000000000","guaranteedUsd":"0","name":"Dai","maxUsdgAmount":"39000000000000000000000000","cumulativeFundingRate":"138487","maxPrice":"1000000000000000000000000000000","usdgAmount":"33558520854336955802808838","maxGlobalShortSize":"0","fundingRate":"5","updatedAt":1690584633}},
-#  {"id":"0xFEa7a6a0B346362BF88A9e4A88416B77a57D6c2A","data":{"symbol":"MIM","reservedAmount":"0","liqMinPrice":"991901250000000000000000000000","address":"0xFEa7a6a0B346362BF88A9e4A88416B77a57D6c2A","poolAmount":"364804879013815250","globalShortSize":"0","weight":"1","redemptionAmount":"1000000000000000000000000000000","liqMaxPrice":"991901250000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"0","availableAmount":"364804879013815250","decimals":18,"minPrice":"991901250000000000000000000000","guaranteedUsd":"0","name":"Magic Internet Money","maxUsdgAmount":"1000000000000000000","cumulativeFundingRate":"25032","maxPrice":"1000000000000000000000000000000","usdgAmount":"356877394819954755","maxGlobalShortSize":"0","fundingRate":"0","updatedAt":1690584633}},
-#  {"id":"0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8","data":{"symbol":"USDC.e","reservedAmount":"24281215313479","liqMinPrice":"1000191360000000000000000000000","address":"0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8","poolAmount":"181832881049542","globalShortSize":"0","weight":"32000","redemptionAmount":"1000000000000000000","liqMaxPrice":"1000191360000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"150000000000000","availableAmount":"157551665736063","decimals":6,"minPrice":"1000000000000000000000000000000","guaranteedUsd":"0","name":"Bridged USDC","maxUsdgAmount":"220000000000000000000000000","cumulativeFundingRate":"381974","maxPrice":"1000000000000000000000000000000","usdgAmount":"181868228993477858739444718","maxGlobalShortSize":"0","fundingRate":"13","updatedAt":1690584633}},
-#  {"id":"0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0","data":{"symbol":"UNI","reservedAmount":"66350717231068532548652","liqMinPrice":"6009700000000000000000000000000","address":"0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0","poolAmount":"581645935434261114588904","globalShortSize":"332691134353945033946715542636567500","weight":"1000","redemptionAmount":"166389351081530782029950083194","liqMaxPrice":"6009700000000000000000000000000","maxGlobalLongSize":"500000000000000000000000000000000000","bufferAmount":"400000000000000000000000","availableAmount":"515295218203192582040252","decimals":18,"minPrice":"6010000000000000000000000000000","guaranteedUsd":"319337425518780505751009692103979649","name":"Uniswap","maxUsdgAmount":"5000000000000000000000000","cumulativeFundingRate":"182659","maxPrice":"6010000000000000000000000000000","usdgAmount":"3294574164350380076446018","maxGlobalShortSize":"500000000000000000000000000000000000","fundingRate":"11","updatedAt":1690584633}},
-#  {"id":"0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9","data":{"symbol":"USDT","reservedAmount":"1362837487540","liqMinPrice":"999900000000000000000000000000","address":"0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9","poolAmount":"8202612422817","globalShortSize":"0","weight":"2000","redemptionAmount":"1000000000000000000","liqMaxPrice":"999900000000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"1000000000000","availableAmount":"6839774935277","decimals":6,"minPrice":"1000000000000000000000000000000","guaranteedUsd":"0","name":"Tether","maxUsdgAmount":"8200000000000000000000000","cumulativeFundingRate":"419434","maxPrice":"1000000000000000000000000000000","usdgAmount":"8199999908206967998008876","maxGlobalShortSize":"0","fundingRate":"16","updatedAt":1690584633}},
-#  {"id":"0xaf88d065e77c8cC2239327C5EDb3A432268e5831","data":{"symbol":"USDC","reservedAmount":"1812034569678","liqMinPrice":"1000191360000000000000000000000","address":"0xaf88d065e77c8cC2239327C5EDb3A432268e5831","poolAmount":"9125424677771","globalShortSize":"0","weight":"2000","redemptionAmount":"1000000000000000000","liqMaxPrice":"1000191360000000000000000000000","maxGlobalLongSize":"0","bufferAmount":"1000000000000","availableAmount":"7313390108093","decimals":6,"minPrice":"1000000000000000000000000000000","guaranteedUsd":"0","name":"USD Coin","maxUsdgAmount":"20000000000000000000000000","cumulativeFundingRate":"18008","maxPrice":"1000000000000000000000000000000","usdgAmount":"9120375607848606248417728","maxGlobalShortSize":"0","fundingRate":"19","updatedAt":1690584633}},
-#  {"id":"0xf97f4df75117a78c1A5a0DBb814Af92458539FB4","data":{"symbol":"LINK","reservedAmount":"100045005477550699731145","liqMinPrice":"7821977830000000000000000000000","address":"0xf97f4df75117a78c1A5a0DBb814Af92458539FB4","poolAmount":"532819187309970490044192","globalShortSize":"428422169662076156785256500647662316","weight":"1000","redemptionAmount":"128008192524321556579621095750","liqMaxPrice":"7821977830000000000000000000000","maxGlobalLongSize":"500000000000000000000000000000000000","bufferAmount":"450000000000000000000000","availableAmount":"432774181832419790313047","decimals":18,"minPrice":"7812000000000000000000000000000","guaranteedUsd":"499990231165838851355313941133155949","name":"Chainlink","maxUsdgAmount":"6100000000000000000000000","cumulativeFundingRate":"426911","maxPrice":"7812000000000000000000000000000","usdgAmount":"3784870023987995387479687","maxGlobalShortSize":"500000000000000000000000000000000000","fundingRate":"18","updatedAt":1690584633}}]
+#Contract readeding
+sys.path.insert(1, '/main') # replace '/path/to/dir1' with actual path
+with open("./position_router_abi.json") as f:
+    info_json = json.load(f)
+abi = info_json
+dotenv_path = './.env'
+load_dotenv(dotenv_path=dotenv_path)
+infura_project_id:str = os.getenv('INFURA_API_KEY')
+w3 = Web3(Web3.HTTPProvider(f'https://arb-mainnet.g.alchemy.com/v2/{infura_project_id}'))
+print('is connec ted',w3.is_connected())
+GMXContractAddress = '0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868' # GMX contract address
+GMXContractABI = abi
+GMXContract = w3.eth.contract(address=GMXContractAddress, abi=GMXContractABI)
+index_tokens={'0x82aF49447D8a07e3bd95BD0d56f35241523fBab1':'Wrapped Ether (WETH)','0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f':'Wrapped BTC (WBTC)','0xf97f4df75117a78c1A5a0DBb814Af92458539FB4':'ChainLink Token (LINK)','0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0':'Uniswap (UNI)'}
+def get_token(index_token):
+    return index_tokens[index_token]
+def get_side(isLong):
+    if isLong:
+        return 'Long'
+    else:
+        return 'Short'
+def handle_event(event):
+    sizeDelta = event['args']['sizeDelta'] / (10 ** 30)
+    indexToken = event['args']['indexToken']
+    account = event['args']['account']
+    transactionHash = event['transactionHash']
+    transactionHash = transactionHash.hex()
+    base_link = "https://arbiscan.io/tx/"
+    transaction_link = f'<a href="{base_link}{transactionHash}">TransactionHash</a>'
+    if sizeDelta >= 100000:
+        message_to_send =f'🐳 Whale Alert! 🐳\nToken: {get_token(indexToken)}\nPosition size:${round(sizeDelta,4)}USD\n{get_side(event["args"]["isLong"])}\nTrader: {account}\n\n {transaction_link}'
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(check_whales(message_to_send))
 
-TELEGRAM_TOKEN: Final= '6396994222:AAG7p2O9wkZH5ZPxMI3WR4nvUzXcEpnOj3s'
-BOT_USERNAME: Final = '@banana_man_do_bot'
 
-            # "chat_id": "5000177235",
+event_filter = GMXContract.events.ExecuteIncreasePosition.create_filter(fromBlock='latest')
+def runnning_whale_check():
+    while True:
+        for event in event_filter.get_new_entries():
+
+            handle_event(event)
+
+TELEGRAM_TOKEN: Final= os.getenv("TELEGRAM_TOKEN")
+BOT_USERNAME: Final = os.getenv("BOT_USERNAME")
   
 dotenv_path = './.env'
 load_dotenv(dotenv_path=dotenv_path)
@@ -35,9 +67,15 @@ supabase: Client = create_client(url, key)
 
 
 #Helper functions
+def action_greater_message(action):
+    if action == True:
+        return 'greater than'
+    else:
+        return 'less than'
+def get_token(index_token):
+    return index_tokens[index_token]
 def token_check(token):
-    token_to_check = token.upper()
-    if token_to_check in TOKEN_OPTIONS:
+    if token in TOKEN_OPTIONS:
         return True
     else:
         return False
@@ -63,11 +101,21 @@ async def notify_user(user_id, token,price,new_price,actionType):
     bot = Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(chat_id=user_id, text=f'Alert!\nThe price of {token} is {typeOf} your trigger price of ${price}.\n Current Price is ${new_price}')
 
+async def send_message(user_id, message):
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=user_id, text=message, parse_mode='HTML')
 
-
+async def send_message_reminder(user_id, message,keyboard):
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=user_id, text=message, reply_markup=keyboard.to_dict())
 
 #Database
 #db push
+def remove_trigger_from_db(trigger_id):
+    try:
+        supabase.table("triggers").delete().eq('id', trigger_id).execute()
+    except Exception as e:
+        print('error',e)
 def add_trigger_daily(user_id, token:str):
     token_input = token.upper()
     print('token inmput',token_input)
@@ -88,40 +136,100 @@ def add_trigger_to_db(user_id, token, action, price):
         supabase.table("triggers").insert(trigger).execute()
     except Exception as e:
         print('error',e)
-def add_user_to_db(user_id):
-    user = {"user_chatid": user_id}
+def remove_from_whale(user_id):
+    try:
+        supabase.table("users").update({"whale": False}).eq('user_chatid', user_id).execute()
+    except Exception as e:
+        print('error',e)
+def add_user_to_db(user_id,whale=None):
+    if whale == None:
+        user = {"user_chatid": user_id, "whale": False}
+    else:
+        user = {"user_chatid": user_id, "whale": True}
     try:
         supabase.table("users").upsert(user).execute()
     except Exception as e:
         print('error',e)
 #db pull
-def get_untriggered_reminders(user_id):
+def get_all_whales():
     try:
-        response = supabase.table("triggers").select("token, type, price, action_greater,created_at").eq('user_id', user_id).neq('has_reminded', True).execute()
+        response = supabase.table("users").select("user_chatid").eq('whale',True).execute()
+    except:
+        print('error')
+    if response.data == []:
+        return
+    whales = response.data
+    return whales
+async def get_untriggered_reminders(user_id):
+    triggers = []
+    messages = []
+    try:
+        response = supabase.table("triggers").select("id,token, type, price, action_greater,created_at").eq('user_id', user_id).neq('has_reminded', True).execute()
+        triggers.extend(response.data)
     except:
         print('error')
     try:
-        response2 = supabase.table("triggers").select("token, type, price, action_greater,created_at").eq('user_id', user_id).eq('type', 'daily').execute()
+        response2 = supabase.table("triggers").select("id,token, type, price, action_greater,created_at").eq('user_id', user_id).eq('type', 'daily').execute()
+        triggers.extend(response2.data)
     except:
         print('error')
-    triggers = response.data
-    triggers.extend(response2.data)
-    print(triggers)
+    try:
+        response3 = supabase.table("users").select("whale").eq('user_chatid', user_id).execute()
+        print(response3.data)
+    except:
+        print('error')
+
+    if response3.data[0]['whale'] == True:
+        print('Apart of the whale list')
+        whale_message = ('You are apart of the whale list. You will be notified when there are large movements in the market.')
+        await send_message(user_id, whale_message)
+    # Create inline keyboard
     for trigger in triggers:
         if trigger['type'] == 'daily':
-            print('daily')
-            print(trigger['token'])
-            print(trigger['created_at'])
+            cancel_button = InlineKeyboardButton('Cancel', callback_data=f'cancel_{trigger["id"]}')
+            keyboard = InlineKeyboardMarkup([[cancel_button]])
+            message = ('Daily reminder for ' + trigger['token'] + ' created on ' + trigger['created_at'])
+            messages.append((message, keyboard))
         if trigger['type'] == 'conditional':
-            print('conditional')
-            print(trigger['token'])
-            print(trigger['price'])
-            print(trigger['action_greater'])
-            print(trigger['created_at'])
-
-
+            cancel_button = InlineKeyboardButton('Cancel', callback_data=f'cancel_{trigger["id"]}')
+            keyboard = InlineKeyboardMarkup([[cancel_button]])
+            message =('Conditional reminder for ' + trigger['token'] + ' created on ' + trigger['created_at'] + ' when price is ' + action_greater_message(trigger['action_greater']) + ' $' + trigger['price'])
+            messages.append((message, keyboard))
+    if messages != []:
+        for message, keyboard in messages:
+            response = await send_message_reminder(user_id, message, keyboard)
+            print('response befre if',response)
+            if response is not None:
+                print('response not in none')
+                print(response)
+                # Handle the response if necessary
+                pass
+    else:
+        await send_message(user_id, 'You have no reminders')
+async def check_whales(message:str):
+    accounts = get_all_whales()
+    tasks = [send_message(account['user_chatid'], message) for account in accounts]
+    await asyncio.gather(*tasks)
+# Separate function to handle callback
+async def handle_button_click(update, context):
+    query = update.callback_query
+    button_data = query.data
+    if button_data.startswith('cancel_'):
+        print('cancel')
+        reminder_id = button_data[len('cancel_'):]
+        text_message = query.message.text
+        if reminder_id is not None:
+            print('reminder id',reminder_id)
+            remove_trigger_from_db(reminder_id)
+            # Handle the reminder cancellation
+            edited_message = f"❌Has been deleted. {text_message} DELETED❌"
+            await context.bot.edit_message_text(
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id,
+                text=edited_message
+            )
+            pass
 async def check_triggers(token,action,new_price):
-    token = token.upper()
     try:
         if action == True:
             response = supabase.table("triggers").select("price, user_id,id").eq('token', token).eq('action_greater', action).eq('has_reminded',False).lte('price', new_price).execute()
@@ -129,6 +237,8 @@ async def check_triggers(token,action,new_price):
             response = supabase.table("triggers").select("price, user_id,id").eq('token', token).eq('action_greater', action).eq('has_reminded',False).gte('price', new_price).execute()
     except:
         print('error')
+    if response.data == []:
+        return
     triggers = response.data
     for trigger in triggers:
         print(trigger)
@@ -136,7 +246,8 @@ async def check_triggers(token,action,new_price):
         db_triggered(trigger['id'])
 
 #Global Variables
-TOKEN_OPTIONS= ['FRAX','WBTC','ETH','DAI','MIM','UNI','USDC.E','USDT','LINK']
+index_tokens={'0x82aF49447D8a07e3bd95BD0d56f35241523fBab1':'Wrapped Ether (WETH)','0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f':'Wrapped BTC (WBTC)','0xf97f4df75117a78c1A5a0DBb814Af92458539FB4':'ChainLink Token (LINK)','0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0':'Uniswap (UNI)'}
+TOKEN_OPTIONS= ['Wrapped Ether (WETH)','Wrapped BTC (WBTC)','ChainLink Token (LINK)','Uniswap (UNI)']
 LAST_TOKEN_PRICE = {}
 PREV_TOKEN_PRICES = {}
 PRICE_CHANGES = {}
@@ -153,35 +264,34 @@ async def do_reminders():
 
 #Http requests
 async def fetch_token_prices():
-    response = requests.get('https://api.gmx.io/tokens')
+    print('fetching token prices')
+    response = requests.get('https://api.gmx.io/prices')
     tokens = response.json()
     token_prices = {}
     PREV_TOKEN_PRICES = LAST_TOKEN_PRICE.copy()
     LAST_TOKEN_PRICE.clear()
     PRICE_CHANGES.clear()
-    for token in tokens:
-        token_prices[token['data']['symbol']] = int(token['data']['minPrice'])/10**30
-        LAST_TOKEN_PRICE[token['data']['symbol']] = int(token['data']['minPrice'])/10**30
-        if token['data']['symbol'] in PREV_TOKEN_PRICES:
+    token_prices = {get_token(address): int(price) / 10**30 for address, price in tokens.items()}
+    for token_name, price in token_prices.items():
+        LAST_TOKEN_PRICE[token_name] = price
+
+        if token_name in PREV_TOKEN_PRICES:
             # If the price has increased, store 'up', otherwise store 'down'
-            if int(token['data']['minPrice'])/10**30 > PREV_TOKEN_PRICES[token['data']['symbol']]:
-                PRICE_CHANGES[token['data']['symbol']] = 'up'
-            # if int(token['data']['minPrice'])/10**30 == PREV_TOKEN_PRICES[token['data']['symbol']]: 
-            #     print('same')
-            if int(token['data']['minPrice'])/10**30 < PREV_TOKEN_PRICES[token['data']['symbol']]:
-                PRICE_CHANGES[token['data']['symbol']] = 'down'
-        # print(token['data']['symbol'], token['data']['name'], int(token['data']['minPrice'])/10**30)
+            if price > PREV_TOKEN_PRICES[token_name]:
+                PRICE_CHANGES[token_name] = 'up'
+            elif price < PREV_TOKEN_PRICES[token_name]:
+                PRICE_CHANGES[token_name] = 'down'
     await check_change()
     return token_prices
 
 
 #Commands
 async def start(update: Update,context):
-    await update.message.reply_text("Hi! I'm a bot that will help you to keep track of your crypto portfolio. \n\n We track token prices on GMX \n\n To get started, type /new_reminder \n\n Type /tokens to get a list of tokens you can track \n\n Type /lastPrice to get the last price of all the tokens \n\n Type /reminders to get a list of your reminders \n\nType /cancel anytime to end conversation ")
+    await update.message.reply_text("Hi! I'm a bot that will help you to keep track of your crypto portfolio. \n\n We track token prices on GMX \n\n To get started, type /new_reminder \n\n Type /tokens to get a list of tokens you can track \n\n Type /lastPrice to get the last price of all the tokens \n\n Type /reminders to get a list of your reminders \n\nType /whale_list to get added to the 🐳Whale alerts!\n\nType /remove_whale To stop whale alerts \n\nType /cancel anytime to end conversation")
 async def help(update: Update,context):
-    await update.message.reply_text("Hi! I'm a bot that will help you to keep track of your crypto portfolio. \n\n We track token prices on GMX \n\n To get started, type /new_reminder \n\n Type /tokens to get a list of tokens you can track \n\n Type /lastPrice to get the last price of all the tokens \n\nType /reminders to get a list of your reminders \n\nType /cancel anytime to end conversation")
+    await update.message.reply_text("Hi! I'm a bot that will help you to keep track of your crypto portfolio. \n\n We track token prices on GMX \n\n To get started, type /new_reminder \n\n Type /tokens to get a list of tokens you can track \n\n Type /lastPrice to get the last price of all the tokens \n\nType /reminders to get a list of your reminders\n\nType /whale_list to get added to the 🐳Whale alerts!\n\nType /remove_whale To stop whale alerts \n\nType /cancel anytime to end conversation")
 async def get_tokens(update: Update,context):
-    await update.message.reply_text("Here are the list of tokens you have the option of tracking \n\n 1. FRAX \n\n 2. WBTC \n\n 3. ETH \n\n 4. DAI \n\n 5. MIM \n\n 6. UNI \n\n 7. USDC.E \n\n 8. USDT \n\n 9. LINK \n\n") 
+    await update.message.reply_text("Here are the list of tokens you have the option of tracking \n\n 1. Wrapped Ether (WETH)\n\n 2. Wrapped BTC (WBTC)\n\n 3. ChainLink Token (LINK)\n\n 4. Uniswap (UNI)") 
 async def last_price(update: Update,context):
     # Assuming LAST_TOKEN_PRICE is your dictionary
     token_prices_str = '\n'.join(f'{k}: {v}' for k, v in LAST_TOKEN_PRICE.items())
@@ -189,9 +299,19 @@ async def last_price(update: Update,context):
     return ConversationHandler.END    
 async def get_reminders(update: Update,context):
     await update.message.reply_text("Here are your reminders: \n\n") 
-    get_untriggered_reminders(update.message.chat_id)
+    await get_untriggered_reminders(update.message.chat_id)
+    return ConversationHandler.END
+async def remove_whale(update: Update,context):
+    user_id = update.message.chat_id
+    remove_from_whale(user_id)
+    await update.message.reply_text("You have been removed from our whale list. You will no longer be notified when there are large movements in the market.")
     return ConversationHandler.END
 #Entry Point
+async def whale_sign_up(update: Update,context):
+    user_id = update.message.chat_id
+    add_user_to_db(user_id,True)
+    await update.message.reply_text("You have been added to our whale list. You will be notified when there are large movements in the market.")
+    return ConversationHandler.END
 async def new_reminder(update: Update,context):
     user_id = update.message.chat_id
     add_user_to_db(user_id)
@@ -209,9 +329,9 @@ async def token_select(update: Update,context):
     return 2
 async def type_trigger(update: Update,context):
     global current_token
-    current_token = update.message.text.upper()
+    current_token = TOKEN_OPTIONS[int(update.message.text) - 1]
     if not token_check(current_token):
-        await update.message.reply_text("Please choose a token from the list\n\n 1. FRAX \n\n 2. WBTC \n\n 3. ETH \n\n 4. DAI \n\n 5. MIM \n\n 6. UNI \n\n 7. USDC.E \n\n 8. USDT \n\n 9. LINK \n\n")
+        await update.message.reply_text("Please choose a token from the list\n\n 1. Wrapped Ether (WETH)\n\n 2. Wrapped BTC (WBTC)\n\n 3. ChainLink Token (LINK)\n\n 4. Uniswap (UNI)")
         return 2
     user_id = update.message.chat_id
     if trigger_type == '1':
@@ -237,10 +357,10 @@ async def price_input(update: Update,context):
     typeOF = None
     if direction == '>=':
         action = True
-        typeOF = 'greater than or equal to'
+        typeOF = 'greater than'
     else:
         action = False
-        typeOF = 'less than or equal to'
+        typeOF = 'less than'
     add_trigger_to_db(user_id, current_token, action, price)
     await update.message.reply_text("Great! I'll alert you when " + current_token + "'s price is " + typeOF + "  $" + price + " USD!")
     return ConversationHandler.END   
@@ -267,6 +387,7 @@ def run_async_func(func):
     return result
 #Threading
 threading.Thread(target=run_async_func, args=(do_reminders,)).start()
+threading.Thread(target=run_async_func, args=(runnning_whale_check,)).start()
 
 print("Bot started")
 app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -274,13 +395,18 @@ app = Application.builder().token(TELEGRAM_TOKEN).build()
 #commands
 app.add_handler(CommandHandler('start', start))
 app.add_handler(CommandHandler('help', help))
+app.add_handler(CommandHandler('whale_list', whale_sign_up))
 app.add_handler(CommandHandler('tokens', get_tokens))
 app.add_handler(CommandHandler('lastPrice', last_price))
 app.add_handler(CommandHandler('reminders', get_reminders))
+app.add_handler(CommandHandler('remove_whale', remove_whale))
 app.add_handler(CommandHandler('cancel', cancel))
+# app.add_handler(CallbackQuery(handle_callback))
 #conversation
 app.add_handler(conv_handler)
 
+app.add_handler(CallbackQueryHandler(handle_button_click))
 
 print("Bot polling.......")
 app.run_polling(poll_interval=5)
+
