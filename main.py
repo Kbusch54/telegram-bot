@@ -1,5 +1,5 @@
 from typing import Final
-from telegram import Bot, KeyboardButton, Update,InlineKeyboardButton,InlineKeyboardMarkup
+from telegram import Bot, Update,InlineKeyboardButton,InlineKeyboardMarkup
 import requests
 import threading
 from web3 import Web3
@@ -9,11 +9,11 @@ import os
 import json
 import sys
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes,Updater,CallbackQueryHandler, CallbackContext,ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters,CallbackQueryHandler, CallbackContext,ConversationHandler
 import asyncio
 
-#Contract readeding
-sys.path.insert(1, '/main') # replace '/path/to/dir1' with actual path
+#Contract reading
+sys.path.insert(1, '/main') 
 with open("./position_router_abi.json") as f:
     info_json = json.load(f)
 abi = info_json
@@ -21,7 +21,6 @@ dotenv_path = './.env'
 load_dotenv(dotenv_path=dotenv_path)
 infura_project_id:str = os.getenv('INFURA_API_KEY')
 w3 = Web3(Web3.HTTPProvider(f'https://arb-mainnet.g.alchemy.com/v2/{infura_project_id}'))
-print('is connec ted',w3.is_connected())
 GMXContractAddress = '0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868' # GMX contract address
 GMXContractABI = abi
 GMXContract = w3.eth.contract(address=GMXContractAddress, abi=GMXContractABI)
@@ -42,7 +41,7 @@ def handle_event(event):
     base_link = "https://arbiscan.io/tx/"
     transaction_link = f'<a href="{base_link}{transactionHash}">TransactionHash</a>'
     if sizeDelta >= 100000:
-        message_to_send =f'🐳 Whale Alert! 🐳\nToken: {get_token(indexToken)}\nPosition size:${round(sizeDelta,4)}USD\n{get_side(event["args"]["isLong"])}\nTrader: {account}\n\n {transaction_link}'
+        message_to_send =f'🐳 Whale Alert! 🐳\nToken: {get_token(indexToken)}\nPosition size:${round(sizeDelta,2)}USD\n{get_side(event["args"]["isLong"])}\nTrader: {account}\n\n {transaction_link}'
         loop = asyncio.get_event_loop()
         loop.run_until_complete(check_whales(message_to_send))
 
@@ -91,7 +90,13 @@ def is_number(s):
         return True
     except ValueError:
         return False
-
+async def check_dailys():
+    response = supabase.table("triggers").select("token, user_id,id").eq('type', 'daily').execute()
+    if response.data == []:
+        return
+    triggers = response.data
+    for trigger in triggers:
+        await send_message(trigger['user_id'],f'Here is your daily reminder for {trigger["token"]}\n ${round(LAST_TOKEN_PRICE[trigger["token"]],2)}')
 async def notify_user(user_id, token,price,new_price,actionType):
     typeOf = None
     if actionType == True:
@@ -117,8 +122,7 @@ def remove_trigger_from_db(trigger_id):
     except Exception as e:
         print('error',e)
 def add_trigger_daily(user_id, token:str):
-    token_input = token.upper()
-    print('token inmput',token_input)
+    token_input = token
     trigger = {"token": token_input, "type": 'daily', "user_id": user_id,'created_at':time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}
     try:
         supabase.table("triggers").insert(trigger).execute()
@@ -143,7 +147,7 @@ def remove_from_whale(user_id):
         print('error',e)
 def add_user_to_db(user_id,whale=None):
     if whale == None:
-        user = {"user_chatid": user_id, "whale": False}
+        user = {"user_chatid": user_id}
     else:
         user = {"user_chatid": user_id, "whale": True}
     try:
@@ -180,7 +184,6 @@ async def get_untriggered_reminders(user_id):
         print('error')
 
     if response3.data[0]['whale'] == True:
-        print('Apart of the whale list')
         whale_message = ('You are apart of the whale list. You will be notified when there are large movements in the market.')
         await send_message(user_id, whale_message)
     # Create inline keyboard
@@ -193,17 +196,11 @@ async def get_untriggered_reminders(user_id):
         if trigger['type'] == 'conditional':
             cancel_button = InlineKeyboardButton('Cancel', callback_data=f'cancel_{trigger["id"]}')
             keyboard = InlineKeyboardMarkup([[cancel_button]])
-            message =('Conditional reminder for ' + trigger['token'] + ' created on ' + trigger['created_at'] + ' when price is ' + action_greater_message(trigger['action_greater']) + ' $' + trigger['price'])
+            message =('Conditional reminder for ' + trigger['token'] + ' created on ' + trigger['created_at'] + ' when price is ' + action_greater_message(trigger['action_greater']) + ' $' + str(trigger['price']))
             messages.append((message, keyboard))
     if messages != []:
         for message, keyboard in messages:
             response = await send_message_reminder(user_id, message, keyboard)
-            print('response befre if',response)
-            if response is not None:
-                print('response not in none')
-                print(response)
-                # Handle the response if necessary
-                pass
     else:
         await send_message(user_id, 'You have no reminders')
 async def check_whales(message:str):
@@ -215,14 +212,12 @@ async def handle_button_click(update, context):
     query = update.callback_query
     button_data = query.data
     if button_data.startswith('cancel_'):
-        print('cancel')
         reminder_id = button_data[len('cancel_'):]
         text_message = query.message.text
         if reminder_id is not None:
-            print('reminder id',reminder_id)
             remove_trigger_from_db(reminder_id)
             # Handle the reminder cancellation
-            edited_message = f"❌Has been deleted. {text_message} DELETED❌"
+            edited_message = f"❌Deleted \n{text_message}\nDELETED❌"
             await context.bot.edit_message_text(
                 chat_id=query.message.chat_id,
                 message_id=query.message.message_id,
@@ -230,6 +225,7 @@ async def handle_button_click(update, context):
             )
             pass
 async def check_triggers(token,action,new_price):
+    token = token
     try:
         if action == True:
             response = supabase.table("triggers").select("price, user_id,id").eq('token', token).eq('action_greater', action).eq('has_reminded',False).lte('price', new_price).execute()
@@ -241,7 +237,6 @@ async def check_triggers(token,action,new_price):
         return
     triggers = response.data
     for trigger in triggers:
-        print(trigger)
         await notify_user(trigger['user_id'], token, trigger['price'], new_price, action)
         db_triggered(trigger['id'])
 
@@ -260,11 +255,13 @@ async def do_reminders():
     while True:
         await fetch_token_prices()
 
-        time.sleep(30)
-
+        time.sleep(60*5)#5 minutes
+async def do_daily_reminders():
+    while True:
+        time.sleep(60*60*24)#24 hours
+        await check_dailys()
 #Http requests
 async def fetch_token_prices():
-    print('fetching token prices')
     response = requests.get('https://api.gmx.io/prices')
     tokens = response.json()
     token_prices = {}
@@ -293,7 +290,6 @@ async def help(update: Update,context):
 async def get_tokens(update: Update,context):
     await update.message.reply_text("Here are the list of tokens you have the option of tracking \n\n 1. Wrapped Ether (WETH)\n\n 2. Wrapped BTC (WBTC)\n\n 3. ChainLink Token (LINK)\n\n 4. Uniswap (UNI)") 
 async def last_price(update: Update,context):
-    # Assuming LAST_TOKEN_PRICE is your dictionary
     token_prices_str = '\n'.join(f'{k}: {v}' for k, v in LAST_TOKEN_PRICE.items())
     await update.message.reply_text("Here are the lastet prices: \n\n" + token_prices_str)
     return ConversationHandler.END    
@@ -318,16 +314,29 @@ async def new_reminder(update: Update,context):
     await update.message.reply_text("Please choose your reminder \n\n 1. Daily \n\n 2. Conditional \n\n")
     return 1
 #Conversations
-async def token_select(update: Update,context):
+async def cancel(update: Update, context: CallbackContext):
+    print("cancel")
+    await update.message.reply_text('Conversation cancelled.')
+    ConversationHandler.END
+    return 
+
+async def new_reminder(update: Update, context: CallbackContext):
+    user_id = update.message.chat_id
+    add_user_to_db(user_id)
+    await update.message.reply_text("Please choose your reminder \n\n 1. Daily \n\n 2. Conditional \n\n")
+    return 1
+
+async def token_select(update: Update, context: CallbackContext):
     global trigger_type
     trigger_type = update.message.text
-    if trigger_type not in ['1','2']:
-        await update.message.reply_text("Please only choose \n\n 1. Daily \n\n 2. Conditional \n\n")
+    if trigger_type not in ['1', '2']:
+        await update.message.reply_text("Please choose \n\n 1. Daily \n\n 2. Conditional \n\n")
         return 1
     await update.message.reply_text("What is the token you would want to set a reminder for? \n\n")
-    await get_tokens(update,context)
+    await get_tokens(update, context)
     return 2
-async def type_trigger(update: Update,context):
+
+async def type_trigger(update: Update, context: CallbackContext):
     global current_token
     current_token = TOKEN_OPTIONS[int(update.message.text) - 1]
     if not token_check(current_token):
@@ -335,18 +344,18 @@ async def type_trigger(update: Update,context):
         return 2
     user_id = update.message.chat_id
     if trigger_type == '1':
-        await update.message.reply_text("Great! I'll remind you daily about "+" " + current_token + "'s price!")
+        await update.message.reply_text("Great! I'll remind you daily about " + current_token + "'s price!")
         add_trigger_daily(user_id, current_token)
         return ConversationHandler.END
-    if trigger_type == '2':  
+    if trigger_type == '2':
         await update.message.reply_text("For " + current_token + " what price point would you want to trigger an alert? \n\n >= input price USD \n\n <= input price USD \n\n")
         return 3
 
-async def price_input(update: Update,context):
+async def price_input(update: Update, context: CallbackContext):
     user_id = update.message.chat_id
     user_input = update.message.text
     direction = user_input[0:2]
-    if direction not in ['>=','<=']:
+    if direction not in ['>=', '<=']:
         await update.message.reply_text("Please only choose \n\n >= input price USD \n\n <= input price USD \n\n")
         return 3
     price = user_input[2:]
@@ -354,19 +363,15 @@ async def price_input(update: Update,context):
         await update.message.reply_text("Please only input numbers \n\n >= input price USD \n\n <= input price USD \n\n")
         return 3
     action = None
-    typeOF = None
+    type_of = None
     if direction == '>=':
         action = True
-        typeOF = 'greater than'
+        type_of = 'greater than'
     else:
         action = False
-        typeOF = 'less than'
+        type_of = 'less than'
     add_trigger_to_db(user_id, current_token, action, price)
-    await update.message.reply_text("Great! I'll alert you when " + current_token + "'s price is " + typeOF + "  $" + price + " USD!")
-    return ConversationHandler.END   
-async def cancel(update: Update,context):
-    print("cancel")
-    await update.message.reply_text('Conversation cancelled.')
+    await update.message.reply_text("Great! I'll alert you when " + current_token + "'s price is " + type_of + " $" + price + " USD!")
     return ConversationHandler.END
 #Conversation Handler
 conv_handler = ConversationHandler(
@@ -388,7 +393,7 @@ def run_async_func(func):
 #Threading
 threading.Thread(target=run_async_func, args=(do_reminders,)).start()
 threading.Thread(target=run_async_func, args=(runnning_whale_check,)).start()
-
+threading.Thread(target=run_async_func, args=(do_daily_reminders,)).start()
 print("Bot started")
 app = Application.builder().token(TELEGRAM_TOKEN).build()
 
